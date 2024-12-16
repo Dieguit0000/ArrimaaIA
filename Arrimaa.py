@@ -29,12 +29,12 @@ PIECE_COLORS = {
     "silver": (192, 192, 192)  # Plata
 }
 PIECE_SYMBOLS = {
-    "E": "Elefante",
-    "C": "Camello",
-    "H": "Caballo",
-    "D": "Perro",
-    "G": "Gato",
-    "R": "Conejo"
+    "E": 6,  # Elefante
+    "C": 5,  # Camello
+    "H": 4,  # Caballo
+    "D": 3,  # Perro
+    "G": 2,  # Gato
+    "R": 1   # Conejo
 }
 
 # Generar posiciones iniciales para los jugadores
@@ -111,14 +111,17 @@ def is_valid_move(start, end):
     sx, sy = start
     ex, ey = end
     dx, dy = abs(ex - sx), abs(ey - sy)
-    if dx + dy == 1:  # Movimiento a una casilla adyacente
-        # Verificar que la casilla final no esté ocupada
-        for positions in INITIAL_POSITIONS.values():
-            for px, py, _ in positions:
-                if (px, py) == end:
-                    return False
-        return True
-    return False
+
+    if dx + dy != 1:
+        return False  # Movimiento debe ser a una casilla adyacente
+
+    # Verificar que la casilla final no esté ocupada
+    for positions in INITIAL_POSITIONS.values():
+        for px, py, _ in positions:
+            if (px, py) == end:
+                return False
+
+    return True
 
 def move_piece(start, end):
     global INITIAL_POSITIONS, selected_piece
@@ -129,24 +132,23 @@ def move_piece(start, end):
                 positions[i] = (end[0], end[1], piece)  # Actualizar posición
                 return
 
-def get_random_move(color):
-    """Genera un movimiento aleatorio para el oponente."""
-    positions = INITIAL_POSITIONS[color]
-    random.shuffle(positions)
+def check_traps():
+    """Verifica las casillas de trampa y elimina piezas sin protección."""
+    global INITIAL_POSITIONS
+    for color, positions in INITIAL_POSITIONS.items():
+        to_remove = []
+        for x, y, piece in positions:
+            if (x, y) in TRAP_POSITIONS:
+                # Verificar aliados adyacentes
+                allies_adjacent = any(
+                    (ax, ay) in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
+                    for ax, ay, _ in positions
+                )
+                if not allies_adjacent:
+                    to_remove.append((x, y, piece))
 
-    for x, y, piece in positions:
-        # Buscar movimientos válidos
-        possible_moves = [
-            (x + dx, y + dy)
-            for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]
-            if 0 <= x + dx < ROWS and 0 <= y + dy < COLS
-        ]
-        random.shuffle(possible_moves)
-
-        for move in possible_moves:
-            if is_valid_move((x, y), move):
-                return (x, y), move
-    return None, None
+        for item in to_remove:
+            positions.remove(item)
 
 def handle_click(pos):
     global selected_square, selected_piece, remaining_moves, current_turn
@@ -171,6 +173,9 @@ def handle_click(pos):
             selected_square = None
             selected_piece = None
 
+            # Verificar trampas tras cada movimiento
+            check_traps()
+
             # Cambio de turno si se acaban los movimientos
             if remaining_moves == 0:
                 remaining_moves = 4
@@ -178,6 +183,25 @@ def handle_click(pos):
                 handle_opponent_turn()
         else:
             selected_square = None  # Deseleccionar si el movimiento no es válido
+            
+def get_random_move(color):
+    """Genera un movimiento aleatorio para el oponente."""
+    positions = INITIAL_POSITIONS[color]
+    random.shuffle(positions)  # Mezcla las posiciones para variar la selección
+
+    for x, y, piece in positions:
+        # Buscar movimientos válidos
+        possible_moves = [
+            (x + dx, y + dy)
+            for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]  # Movimientos ortogonales
+            if 0 <= x + dx < ROWS and 0 <= y + dy < COLS  # Dentro de los límites
+        ]
+        random.shuffle(possible_moves)  # Mezclar posibles movimientos
+
+        for move in possible_moves:
+            if is_valid_move((x, y), move):  # Comprobar si es un movimiento válido
+                return (x, y), move
+    return None, None  # Si no hay movimientos válidos
 
 def handle_opponent_turn():
     global remaining_moves, current_turn
@@ -194,6 +218,9 @@ def handle_opponent_turn():
             draw_pieces()
             pygame.display.flip()
             time.sleep(0.5)  # Pausa para mostrar el movimiento
+
+        # Verificar trampas tras cada movimiento
+        check_traps()
 
     # Cambio de turno a "gold"
     remaining_moves = 4
