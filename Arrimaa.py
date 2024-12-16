@@ -16,6 +16,7 @@ DARK_COLOR = (209, 139, 71)
 TRAP_COLOR = (255, 0, 0)  # Rojo para trampas
 HIGHLIGHT_COLOR = (0, 255, 0)  # Verde para resaltar casillas
 PUSH_HIGHLIGHT_COLOR = (0, 0, 255)  # Azul para resaltar opciones de empuje
+PULL_HIGHLIGHT_COLOR = (255, 255, 0)  # Amarillo para resaltar opciones de jalar
 
 # Crear ventana
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -69,6 +70,9 @@ remaining_moves = 4  # Movimientos por turno
 push_mode = False
 push_options = []  # Opciones para empujar
 piece_to_push = None
+pull_mode = False
+pull_options = []  # Opciones para jalar
+piece_to_pull = None
 
 # Dibujar el tablero
 def draw_board():
@@ -93,6 +97,11 @@ def draw_board():
     if push_mode:
         for px, py in push_options:
             pygame.draw.rect(screen, PUSH_HIGHLIGHT_COLOR,
+                             (py * TILE_SIZE, px * TILE_SIZE, TILE_SIZE, TILE_SIZE), 5)
+
+    if pull_mode:
+        for px, py in pull_options:
+            pygame.draw.rect(screen, PULL_HIGHLIGHT_COLOR,
                              (py * TILE_SIZE, px * TILE_SIZE, TILE_SIZE, TILE_SIZE), 5)
 
 # Dibujar piezas
@@ -142,29 +151,62 @@ def is_valid_move(start, end):
 
     return True
 
-# Generar opciones de empuje
+# Generar opciones de empuje (solo adyacentes en línea recta)
 def generate_push_options(target_pos, pusher_pos):
     tx, ty = target_pos
     px, py = pusher_pos
     options = []
     
+    # Solo se consideran los movimientos adyacentes en las direcciones rectas (arriba, abajo, izquierda, derecha)
     for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
         new_x, new_y = tx + dx, ty + dy
+        # Asegurarse de que las posiciones sean dentro de los límites del tablero y no sean la posición del empujador
         if 0 <= new_x < ROWS and 0 <= new_y < COLS and (new_x, new_y) != (px, py):
+            # Verificar si la nueva casilla está vacía (sin piezas)
             if not any((nx, ny) == (new_x, new_y) for nx, ny, _ in INITIAL_POSITIONS["gold"] + INITIAL_POSITIONS["silver"]):
                 options.append((new_x, new_y))
     return options
 
-# Verificar si una pieza cae en una trampa
-def is_in_trap(position):
-    return position in TRAP_POSITIONS
+# Verificar si una pieza está adyacente a otra
+def is_adjacent(pos1, pos2):
+    x1, y1 = pos1
+    x2, y2 = pos2
+    return (abs(x1 - x2) == 1 and y1 == y2) or (abs(y1 - y2) == 1 and x1 == x2)
 
-# Eliminar pieza que cae en la trampa
-def remove_piece_from_board(position, color):
-    for i, (x, y, piece) in enumerate(INITIAL_POSITIONS[color]):
-        if (x, y) == position:
-            del INITIAL_POSITIONS[color][i]
-            break
+# Generar opciones de jalar (solo si la pieza rival está adyacente)
+def generate_pull_options(target_pos, puller_pos):
+    tx, ty = target_pos
+    px, py = puller_pos
+    options = []
+    
+    # Verificar si la pieza rival está adyacente
+    for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+        new_x, new_y = tx + dx, ty + dy
+        if 0 <= new_x < ROWS and 0 <= new_y < COLS and (new_x, new_y) != (px, py):
+            # Validar que la casilla esté vacía para mover la pieza del oponente
+            if not any((nx, ny) == (new_x, new_y) for nx, ny, _ in INITIAL_POSITIONS["gold"] + INITIAL_POSITIONS["silver"]):
+                options.append((new_x, new_y))
+    return options
+
+# Verificar trampas para una pieza en una posición
+def check_trap(x, y):
+    if (x, y) in TRAP_POSITIONS:
+        for color, positions in INITIAL_POSITIONS.items():
+            allies_adjacent = any(
+                (ax, ay) in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
+                for ax, ay, _ in positions
+            )
+            if not allies_adjacent:
+                return True  # La pieza debe ser eliminada
+    return False
+
+# Eliminar una pieza
+def remove_piece(x, y):
+    for color, positions in INITIAL_POSITIONS.items():
+        for i, (px, py, piece) in enumerate(positions):
+            if (px, py) == (x, y):
+                positions.pop(i)
+                return
 
 # Manejar clics
 def handle_click(pos):
@@ -177,26 +219,13 @@ def handle_click(pos):
 
     if push_mode:
         if (x, y) in push_options:
-            # Realizar el empuje: mover la pieza empujadora y la pieza empujada
-            move_piece(piece_to_push, (x, y))  # Mover la pieza empujadora a la posición de la ficha empujada
-            move_piece(selected_square, piece_to_push)  # Mover la ficha empujada a la nueva posición seleccionada
-
-            # Verificar si la pieza empujada cae en una trampa
-            if is_in_trap((x, y)):
-                print(f"La ficha empujada cae en una trampa en la posición ({x}, {y})")
-                # Eliminar la pieza empujada si no tiene aliados adyacentes
-                piece_color, _ = find_piece((x, y))
-                if piece_color:
-                    # Comprobar si no tiene aliados adyacentes
-                    allies_adjacent = any(
-                        (ax, ay) in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
-                        for ax, ay, _ in INITIAL_POSITIONS[piece_color]
-                    )
-                    if not allies_adjacent:
-                        remove_piece_from_board((x, y), piece_color)
-                        print(f"Se ha eliminado la pieza en la trampa: ({x}, {y})")
+            # Mover la pieza empujada a la nueva posición
+            move_piece(piece_to_push, (x, y))
             
-            # Verificar todas las fichas después del empuje
+            # La ficha que empuja ocupa la posición de la ficha empujada
+            move_piece(selected_square, piece_to_push)
+            
+            # Verificar trampas para todas las piezas después de un empuje
             check_traps()
             
             push_mode = False
@@ -221,7 +250,8 @@ def handle_click(pos):
             pusher_strength = PIECE_SYMBOLS[selected_piece]
             target_strength = PIECE_SYMBOLS[target_piece]
 
-            if pusher_strength > target_strength:
+            # Verificar si la pieza del oponente está adyacente antes de intentar empujarla
+            if is_adjacent(selected_square, (x, y)) and pusher_strength > target_strength:
                 push_mode = True
                 push_options = generate_push_options((x, y), selected_square)
                 piece_to_push = (x, y)
@@ -229,11 +259,15 @@ def handle_click(pos):
 
         if is_valid_move(selected_square, (x, y)):
             move_piece(selected_square, (x, y))
+            
+            # Verificar trampas para todas las piezas después de un movimiento normal
+            check_traps()
+
             remaining_moves -= 1
             end_turn_if_needed()
 
         selected_square = None
-
+        
 # Terminar turno si es necesario
 def end_turn_if_needed():
     global remaining_moves, current_turn
@@ -268,6 +302,10 @@ def handle_opponent_turn():
         start, end = get_random_move("silver")
         if start and end:
             move_piece(start, end)
+            # Verificar si la pieza del oponente cae en una trampa
+            if check_trap(end[0], end[1]):
+                remove_piece(end[0], end[1])
+
             remaining_moves -= 1
 
             screen.fill((0, 0, 0))
@@ -281,7 +319,7 @@ def handle_opponent_turn():
     remaining_moves = 4
     current_turn = "gold"
 
-# Verificar trampas
+# Verificar trampas para todas las piezas del tablero
 def check_traps():
     global INITIAL_POSITIONS
     for color, positions in INITIAL_POSITIONS.items():
@@ -304,12 +342,14 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
-        elif event.type == pygame.MOUSEBUTTONDOWN:
-            handle_click(pygame.mouse.get_pos())
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            pos = pygame.mouse.get_pos()
+            handle_click(pos)
 
-    screen.fill((0, 0, 0))
+    screen.fill((0, 0, 0))  # Limpiar pantalla
     draw_board()
     draw_pieces()
+
     pygame.display.flip()
 
 pygame.quit()
