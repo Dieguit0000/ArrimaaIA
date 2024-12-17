@@ -73,6 +73,7 @@ piece_to_push = None
 pull_mode = False
 pull_options = []  # Opciones para jalar
 piece_to_pull = None
+valid_moves = []  # Movimientos válidos para la pieza seleccionada
 
 # Dibujar el tablero
 def draw_board():
@@ -103,6 +104,9 @@ def draw_board():
         for px, py in pull_options:
             pygame.draw.rect(screen, PULL_HIGHLIGHT_COLOR,
                              (py * TILE_SIZE, px * TILE_SIZE, TILE_SIZE, TILE_SIZE), 5)
+    # Dibujar movimientos válidos
+    for vx, vy in valid_moves:
+        pygame.draw.rect(screen, (255, 255, 255), (vy * TILE_SIZE, vx * TILE_SIZE, TILE_SIZE, TILE_SIZE), 3)  # Borde blanco de 3px
 
 # Dibujar piezas
 def draw_pieces():
@@ -210,7 +214,7 @@ def remove_piece(x, y):
 
 # Manejar clics
 def handle_click(pos):
-    global selected_square, selected_piece, remaining_moves, current_turn, push_mode, push_options, piece_to_push
+    global selected_square, selected_piece, remaining_moves, current_turn, push_mode, push_options, piece_to_push, valid_moves
 
     if current_turn == "silver":
         return
@@ -242,6 +246,11 @@ def handle_click(pos):
                     if (px, py) == (x, y):
                         selected_square = (x, y)
                         selected_piece = piece
+                        valid_moves = [
+                            (px + dx, py + dy)
+                            for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]
+                            if 0 <= px + dx < ROWS and 0 <= py + dy < COLS and is_valid_move((px, py), (px + dx, py + dy))
+                        ]
                         return
     else:
         target_color, target_piece = find_piece((x, y))
@@ -267,6 +276,7 @@ def handle_click(pos):
             end_turn_if_needed()
 
         selected_square = None
+        valid_moves = []
         
 # Terminar turno si es necesario
 def end_turn_if_needed():
@@ -276,31 +286,111 @@ def end_turn_if_needed():
         current_turn = "silver"
         handle_opponent_turn()
 
-# Movimiento aleatorio del oponente
-def get_random_move(color):
-    positions = INITIAL_POSITIONS[color]
-    random.shuffle(positions)
+# Heurística para evaluar el estado del tablero
+def evaluate_board():
+    score = 0
+    for color, positions in INITIAL_POSITIONS.items():
+        for x, y, piece in positions:
+            piece_value = PIECE_SYMBOLS[piece]
+            if color == "gold":
+                score += piece_value
+            else:
+                score -= piece_value
 
-    for x, y, piece in positions:
+            # Penalizar si la pieza está en una trampa sin aliados adyacentes
+            if (x, y) in TRAP_POSITIONS:
+                allies_adjacent = any(
+                    (ax, ay) in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
+                    for ax, ay, _ in positions
+                )
+                if not allies_adjacent:
+                    if color == "gold":
+                        score -= piece_value
+                    else:
+                        score += piece_value
+
+            # Bonificar si la pieza tiene aliados adyacentes
+            allies_adjacent = sum(
+                1 for ax, ay, _ in positions
+                if (ax, ay) in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
+            )
+            score += allies_adjacent if color == "gold" else -allies_adjacent
+
+    return score
+
+
+# Algoritmo Minimax con poda alfa-beta
+def minimax(depth, alpha, beta, maximizing_player):
+    if depth == 0 or remaining_moves == 0:
+        return evaluate_board()
+
+    if maximizing_player:
+        max_eval = float('-inf')
+        for x, y, piece in INITIAL_POSITIONS["silver"]:
+            possible_moves = [
+                (x + dx, y + dy)
+                for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]
+                if 0 <= x + dx < ROWS and 0 <= y + dy < COLS
+            ]
+            for move in possible_moves:
+                if is_valid_move((x, y), move):
+                    move_piece((x, y), move)
+                    eval = minimax(depth - 1, alpha, beta, False)
+                    move_piece(move, (x, y))  # Deshacer movimiento
+                    max_eval = max(max_eval, eval)
+                    alpha = max(alpha, eval)
+                    if beta <= alpha:
+                        break
+        return max_eval
+    else:
+        min_eval = float('inf')
+        for x, y, piece in INITIAL_POSITIONS["gold"]:
+            possible_moves = [
+                (x + dx, y + dy)
+                for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]
+                if 0 <= x + dx < ROWS and 0 <= y + dy < COLS
+            ]
+            for move in possible_moves:
+                if is_valid_move((x, y), move):
+                    move_piece((x, y), move)
+                    eval = minimax(depth - 1, alpha, beta, True)
+                    move_piece(move, (x, y))  # Deshacer movimiento
+                    min_eval = min(min_eval, eval)
+                    beta = min(beta, eval)
+                    if beta <= alpha:
+                        break
+        return min_eval
+
+# Obtener el mejor movimiento para la IA usando Minimax
+def get_best_move():
+    best_move = None
+    best_value = float('-inf')
+    for x, y, piece in INITIAL_POSITIONS["silver"]:
         possible_moves = [
             (x + dx, y + dy)
             for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]
             if 0 <= x + dx < ROWS and 0 <= y + dy < COLS
         ]
-        random.shuffle(possible_moves)
-
         for move in possible_moves:
             if is_valid_move((x, y), move):
-                return (x, y), move
-    return None, None
+                move_piece((x, y), move)
+                move_value = minimax(3, float('-inf'), float('inf'), False)
+                move_piece(move, (x, y))  # Deshacer movimiento
+                print(f"Evaluando movimiento de {x, y} a {move}: Puntaje {move_value}")  # Imprimir el puntaje del movimiento
+                if move_value > best_value:
+                    best_value = move_value
+                    best_move = ((x, y), move)
+    return best_move
 
 # Manejar el turno del oponente
 def handle_opponent_turn():
     global remaining_moves, current_turn
 
     while remaining_moves > 0:
-        start, end = get_random_move("silver")
-        if start and end:
+        best_move = get_best_move()
+        if best_move:
+            start, end = best_move
+            print(f"IA mueve de {start} a {end} con puntaje {evaluate_board()}")  # Imprimir la decisión de la IA con el puntaje
             move_piece(start, end)
             # Verificar si la pieza del oponente cae en una trampa
             if check_trap(end[0], end[1]):
@@ -318,6 +408,7 @@ def handle_opponent_turn():
 
     remaining_moves = 4
     current_turn = "gold"
+
 
 # Verificar trampas para todas las piezas del tablero
 def check_traps():
