@@ -334,7 +334,7 @@ def evaluate_board():
 
 # Algoritmo Minimax con poda alfa-beta
 def minimax(depth, alpha, beta, maximizing_player):
-    if depth == 1 or remaining_moves == 0:
+    if depth == 0 or remaining_moves == 0:
         return evaluate_board()
 
     if maximizing_player:
@@ -449,6 +449,21 @@ while running:
         if event.type == pygame.MOUSEBUTTONDOWN:
             pos = pygame.mouse.get_pos()
             handle_click(pos)
+    
+    # Verificar si hay un conejo en una posicion final
+    for x, y, piece in INITIAL_POSITIONS["gold"]:
+        if x == 7 and piece == "R":
+            print("¡El jugador Gold ha ganado!")
+            running = False
+            break
+    
+    for x, y, piece in INITIAL_POSITIONS["silver"]:
+        if x == 0 and piece == "R":
+            print("¡El jugador Silver ha ganado!")
+            running = False
+            break
+
+    
 
     screen.fill((0, 0, 0))  # Limpiar pantalla
     draw_board()
