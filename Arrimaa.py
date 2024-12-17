@@ -12,7 +12,7 @@ WIDTH, HEIGHT = TILE_SIZE * COLS, TILE_SIZE * ROWS
 
 # Colores
 LIGHT_COLOR = (255, 206, 158)
-DARK_COLOR = (209, 139, 71)
+DARK_COLOR = (000, 000, 71)
 TRAP_COLOR = (255, 0, 0)  # Rojo para trampas
 HIGHLIGHT_COLOR = (0, 255, 0)  # Verde para resaltar casillas
 PUSH_HIGHLIGHT_COLOR = (0, 0, 255)  # Azul para resaltar opciones de empuje
@@ -37,6 +37,25 @@ PIECE_SYMBOLS = {
     "D": 3,  # Perro
     "G": 2,  # Gato
     "R": 1   # Conejo
+}
+# Cargar y redimensionar imágenes de las piezas
+def load_and_scale_image(path, size):
+    image = pygame.image.load(path)
+    return pygame.transform.scale(image, size)
+
+PIECE_IMAGES = {
+    "gold_E": load_and_scale_image("gold_elephant.png", (TILE_SIZE, TILE_SIZE)),
+    "gold_C": load_and_scale_image("gold_camel.png", (TILE_SIZE, TILE_SIZE)),
+    "gold_H": load_and_scale_image("gold_horse.png", (TILE_SIZE, TILE_SIZE)),
+    "gold_D": load_and_scale_image("gold_dog.png", (TILE_SIZE, TILE_SIZE)),
+    "gold_G": load_and_scale_image("gold_cat.png", (TILE_SIZE, TILE_SIZE)),
+    "gold_R": load_and_scale_image("gold_rabbit.png", (TILE_SIZE, TILE_SIZE)),
+    "silver_E": load_and_scale_image("silver_elephant.png", (TILE_SIZE, TILE_SIZE)),
+    "silver_C": load_and_scale_image("silver_camel.png", (TILE_SIZE, TILE_SIZE)),
+    "silver_H": load_and_scale_image("silver_horse.png", (TILE_SIZE, TILE_SIZE)),
+    "silver_D": load_and_scale_image("silver_dog.png", (TILE_SIZE, TILE_SIZE)),
+    "silver_G": load_and_scale_image("silver_cat.png", (TILE_SIZE, TILE_SIZE)),
+    "silver_R": load_and_scale_image("silver_rabbit.png", (TILE_SIZE, TILE_SIZE))
 }
 
 # Generar posiciones iniciales para los jugadores
@@ -106,22 +125,16 @@ def draw_board():
                              (py * TILE_SIZE, px * TILE_SIZE, TILE_SIZE, TILE_SIZE), 5)
     # Dibujar movimientos válidos
     for vx, vy in valid_moves:
-        pygame.draw.rect(screen, (255, 255, 255), (vy * TILE_SIZE, vx * TILE_SIZE, TILE_SIZE, TILE_SIZE), 3)  # Borde blanco de 3px
+        pygame.draw.rect(screen, (255, 255, 255), (vy * TILE_SIZE, vx * TILE_SIZE, TILE_SIZE, TILE_SIZE), 5)  # Borde blanco de 3px
 
 # Dibujar piezas
 def draw_pieces():
-    font = pygame.font.SysFont(None, 40)
     for color, positions in INITIAL_POSITIONS.items():
         for x, y, piece in positions:
-            piece_color = PIECE_COLORS[color]
-            pygame.draw.circle(
-                screen, piece_color,
-                (y * TILE_SIZE + TILE_SIZE // 2, x * TILE_SIZE + TILE_SIZE // 2),
-                TILE_SIZE // 3
-            )
-            text = font.render(piece, True, (0, 0, 0))
-            text_rect = text.get_rect(center=(y * TILE_SIZE + TILE_SIZE // 2, x * TILE_SIZE + TILE_SIZE // 2))
-            screen.blit(text, text_rect)
+            piece_image = PIECE_IMAGES[f"{color}_{piece}"]
+            piece_rect = piece_image.get_rect(center=(y * TILE_SIZE + TILE_SIZE // 2, x * TILE_SIZE + TILE_SIZE // 2))
+            screen.blit(piece_image, piece_rect)
+
 
 # Encontrar pieza en una posición
 def find_piece(position):
