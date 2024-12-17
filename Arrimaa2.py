@@ -305,7 +305,7 @@ def evaluate_board():
     for color, positions in INITIAL_POSITIONS.items():
         for x, y, piece in positions:
             piece_value = PIECE_SYMBOLS[piece]
-            if color == "gold":
+            if color == "silver":
                 score += piece_value
             else:
                 score -= piece_value
@@ -317,17 +317,18 @@ def evaluate_board():
                     for ax, ay, _ in positions
                 )
                 if not allies_adjacent:
-                    if color == "gold":
+                    if color == "silver":
                         score -= piece_value
                     else:
                         score += piece_value
+                        
+            # Bonificar si la pieza está cerca de la columna 0
+            if y <= 1:  # Considerar cercanía si está en la columna 0 o 1
+                if color == "silver":
+                    score += piece_value * 0.5
+                else:
+                    score -= piece_value * 0.5
 
-            # Bonificar si la pieza tiene aliados adyacentes
-            allies_adjacent = sum(
-                1 for ax, ay, _ in positions
-                if (ax, ay) in [(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
-            )
-            score += allies_adjacent if color == "gold" else -allies_adjacent
 
     return score
 
@@ -387,7 +388,7 @@ def get_best_move():
         for move in possible_moves:
             if is_valid_move((x, y), move):
                 move_piece((x, y), move)
-                move_value = minimax(3, float('-inf'), float('inf'), False)
+                move_value = minimax(3, float('-inf'), float('inf'), True)
                 move_piece(move, (x, y))  # Deshacer movimiento
                 print(f"Evaluando movimiento de {x, y} a {move}: Puntaje {move_value}")  # Imprimir el puntaje del movimiento
                 if move_value > best_value:
